@@ -158,14 +158,7 @@ export default function Login() {
             </Pressable>
           </View>
 
-          {/* Quick Demo Credentials Help */}
-          <View style={[styles.helpBox, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.helpTitle, { color: colors.text }]}>💡 Demo Account Info</Text>
-            <Text style={[styles.helpText, { color: colors.textMuted }]}>
-              Mobile: <Text style={{ fontWeight: 'bold' }}>1234567890</Text> | Password:{' '}
-              <Text style={{ fontWeight: 'bold' }}>password123</Text>
-            </Text>
-          </View>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -287,18 +280,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  helpBox: {
-    marginTop: Spacing.xl,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-  },
-  helpTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  helpText: {
-    fontSize: 12,
-  },
+
 });
