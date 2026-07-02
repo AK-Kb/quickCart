@@ -29,7 +29,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setErrorMsg('');
     
     if (!mobile.trim() || !password.trim()) {
@@ -37,12 +37,16 @@ export default function Login() {
       return;
     }
 
-    const user = AuthStore.login(mobile.trim(), password);
-    if (user) {
-      // Successful login
-      router.replace('/home');
-    } else {
-      setErrorMsg('Invalid mobile number or password. If you are new, please Sign Up first.');
+    try {
+      const user = await AuthStore.login(mobile.trim(), password);
+      if (user) {
+        // Successful login
+        router.replace('/home');
+      } else {
+        setErrorMsg('Invalid mobile number or password. If you are new, please Sign Up first.');
+      }
+    } catch {
+      setErrorMsg('An error occurred during login. Please try again.');
     }
   };
 

@@ -14,6 +14,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -190,11 +191,19 @@ export default function Index() {
                 <View style={styles.circleOuterContainer}>
                   <View style={styles.circleInnerContainer}>
                     <View style={styles.logoCardShadow}>
-                      <Image
-                        source={require('../assets/images/icon.png')}
-                        style={styles.onboardingLogo}
-                        resizeMode="contain"
-                      />
+                      {index === 0 && (
+                        <Image
+                          source={require('../assets/images/icon.png')}
+                          style={styles.onboardingLogo}
+                          resizeMode="contain"
+                        />
+                      )}
+                      {index === 1 && (
+                        <Ionicons name="card" size={52} color={colors.secondary} />
+                      )}
+                      {index === 2 && (
+                        <Ionicons name="cube" size={52} color={colors.primary} />
+                      )}
                     </View>
                   </View>
                 </View>

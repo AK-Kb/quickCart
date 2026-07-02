@@ -1,43 +1,76 @@
-// Simple in-memory auth store for mock credentials
+import { db } from './firebase';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+
 export interface User {
   name: string;
   mobile: string;
   password?: string;
+  createdAt?: string;
 }
 
-// Pre-seed with a default user for easy testing
-const usersMap = new Map<string, User>([
-  ['1234567890', { name: 'Demo User', mobile: '1234567890', password: 'password123' }]
-]);
-
 export const AuthStore = {
-  register: (name: string, mobile: string, password?: string): boolean => {
+  // Register a new user in Firestore users collection
+  register: async (name: string, mobile: string, password?: string): Promise<boolean> => {
     if (!mobile || !password) return false;
-    usersMap.set(mobile, { name, mobile, password });
-    return true;
+    try {
+      const userRef = doc(db, 'users', mobile);
+      await setDoc(userRef, {
+        fullName: name,
+        mobile,
+        password,
+        createdAt: new Date().toISOString(),
+      });
+      return true;
+    } catch (error) {
+      console.error('Firestore register error:', error);
+      return false;
+    }
   },
   
-  login: (mobile: string, password?: string): User | null => {
+  // Login verification using Firestore document
+  login: async (mobile: string, password?: string): Promise<User | null> => {
     if (!mobile || !password) return null;
-    const user = usersMap.get(mobile);
-    if (user && user.password === password) {
-      return { name: user.name, mobile: user.mobile };
+    try {
+      const userRef = doc(db, 'users', mobile);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        if (userData.password === password) {
+          return { name: userData.fullName, mobile: userData.mobile };
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Firestore login error:', error);
+      return null;
     }
-    return null;
   },
 
-  userExists: (mobile: string): boolean => {
-    return usersMap.has(mobile);
+  // Check if user already exists
+  userExists: async (mobile: string): Promise<boolean> => {
+    if (!mobile) return false;
+    try {
+      const userRef = doc(db, 'users', mobile);
+      const userSnap = await getDoc(userRef);
+      return userSnap.exists();
+    } catch (error) {
+      console.error('Firestore userExists error:', error);
+      return false;
+    }
   },
 
-  resetPassword: (mobile: string, newPassword?: string): boolean => {
+  // Reset/update password in Firestore doc
+  resetPassword: async (mobile: string, newPassword?: string): Promise<boolean> => {
     if (!mobile || !newPassword) return false;
-    const user = usersMap.get(mobile);
-    if (user) {
-      user.password = newPassword;
-      usersMap.set(mobile, user);
+    try {
+      const userRef = doc(db, 'users', mobile);
+      await updateDoc(userRef, {
+        password: newPassword,
+      });
       return true;
+    } catch (error) {
+      console.error('Firestore resetPassword error:', error);
+      return false;
     }
-    return false;
   }
 };

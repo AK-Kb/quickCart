@@ -42,7 +42,7 @@ export default function Signup() {
   const [otpError, setOtpError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const handleSignupSubmit = () => {
+  const handleSignupSubmit = async () => {
     setErrorMsg('');
 
     // Validations
@@ -66,8 +66,14 @@ export default function Signup() {
       return;
     }
 
-    if (AuthStore.userExists(mobile.trim())) {
-      setErrorMsg('This mobile number is already registered. Please Login.');
+    try {
+      const exists = await AuthStore.userExists(mobile.trim());
+      if (exists) {
+        setErrorMsg('This mobile number is already registered. Please Login.');
+        return;
+      }
+    } catch {
+      setErrorMsg('An error occurred. Please try again.');
       return;
     }
 
@@ -77,21 +83,25 @@ export default function Signup() {
     setIsOtpModalVisible(true);
   };
 
-  const handleVerifyOtp = () => {
+  const handleVerifyOtp = async () => {
     setOtpError('');
 
     if (otpInput.trim() === '123456') {
       // Correct OTP
-      const registerSuccess = AuthStore.register(name.trim(), mobile.trim(), password);
-      
-      if (registerSuccess) {
-        setIsSuccess(true);
-        setTimeout(() => {
-          setIsOtpModalVisible(false);
-          setIsSuccess(false);
-          router.replace('/login');
-        }, 2000);
-      } else {
+      try {
+        const registerSuccess = await AuthStore.register(name.trim(), mobile.trim(), password);
+        
+        if (registerSuccess) {
+          setIsSuccess(true);
+          setTimeout(() => {
+            setIsOtpModalVisible(false);
+            setIsSuccess(false);
+            router.replace('/login');
+          }, 2000);
+        } else {
+          setOtpError('Registration failed. Please try again.');
+        }
+      } catch {
         setOtpError('Registration failed. Please try again.');
       }
     } else {

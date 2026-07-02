@@ -38,7 +38,7 @@ export default function ForgotPassword() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  const handleResetPassword = () => {
+  const handleResetPassword = async () => {
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -53,8 +53,14 @@ export default function ForgotPassword() {
       return;
     }
 
-    if (!AuthStore.userExists(mobile.trim())) {
-      setErrorMsg('This mobile number is not registered.');
+    try {
+      const exists = await AuthStore.userExists(mobile.trim());
+      if (!exists) {
+        setErrorMsg('This mobile number is not registered.');
+        return;
+      }
+    } catch {
+      setErrorMsg('An error occurred. Please try again.');
       return;
     }
 
@@ -74,14 +80,18 @@ export default function ForgotPassword() {
     }
 
     // Attempt Reset
-    const resetSuccess = AuthStore.resetPassword(mobile.trim(), newPassword);
-    
-    if (resetSuccess) {
-      setSuccessMsg('Password changed successfully! Redirecting to login...');
-      setTimeout(() => {
-        router.replace('/login');
-      }, 2000);
-    } else {
+    try {
+      const resetSuccess = await AuthStore.resetPassword(mobile.trim(), newPassword);
+      
+      if (resetSuccess) {
+        setSuccessMsg('Password changed successfully! Redirecting to login...');
+        setTimeout(() => {
+          router.replace('/login');
+        }, 2000);
+      } else {
+        setErrorMsg('Password reset failed. Please try again.');
+      }
+    } catch {
       setErrorMsg('Password reset failed. Please try again.');
     }
   };
