@@ -40,8 +40,8 @@ export default function Login() {
     try {
       const user = await AuthStore.login(mobile.trim(), password);
       if (user) {
-        // Successful login
-        router.replace('/home');
+        // Successful login - redirect to permissions request flow
+        router.replace('/permissions');
       } else {
         setErrorMsg('Invalid mobile number or password. If you are new, please Sign Up first.');
       }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,91 +9,105 @@ import {
   ScrollView,
   Dimensions,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../constants/firebase';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Mock Products for the Homepage
-const MOCK_PRODUCTS = [
-  {
-    id: 'p1',
-    name: 'Wireless Noise-Cancelling Headphones',
-    price: 189.99,
-    category: 'Electronics',
-    rating: 4.8,
-    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500&auto=format&fit=crop&q=60',
-    color: '#0B6A9C',
-  },
-  {
-    id: 'p2',
-    name: 'Minimalist Leather Chronograph Watch',
-    price: 145.00,
-    category: 'Fashion',
-    rating: 4.6,
-    image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60',
-    color: '#FF6B00',
-  },
-  {
-    id: 'p3',
-    name: 'Ergonomic Mesh Office Chair',
-    price: 249.50,
-    category: 'Home',
-    rating: 4.7,
-    image: 'https://images.unsplash.com/photo-1505797149-43b0069ec26b?w=500&auto=format&fit=crop&q=60',
-    color: '#0B6A9C',
-  },
-  {
-    id: 'p4',
-    name: 'Smart Fitness Sports Tracker Band',
-    price: 79.99,
-    category: 'Sports',
-    rating: 4.5,
-    image: 'https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500&auto=format&fit=crop&q=60',
-    color: '#FF6B00',
-  },
+// All 10 categories seeded in Firestore
+const MOCK_CATEGORIES = [
+  'All', 
+  'Electronics', 
+  'Fashion', 
+  'Home', 
+  'Sports', 
+  'Beauty', 
+  'Grocery', 
+  'Books', 
+  'Toys', 
+  'Automotive', 
+  'Health'
 ];
-
-const MOCK_CATEGORIES = ['All', 'Electronics', 'Fashion', 'Home', 'Sports', 'Beauty'];
 
 export default function Home() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const systemScheme = useColorScheme();
   const theme = systemScheme === 'dark' ? 'dark' : 'light';
   const colors = Colors[theme];
+
+  // Retrieve selected/detected state params, defaulting to Delhi
+  const stateIdParam = (params.stateId as string) || 'delhi';
+  const stateNameParam = (params.stateName as string) || 'Delhi';
 
   // Component States
   const [cartCount, setCartCount] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Products & Loading / Error States
+  const [products, setProducts] = useState<any[]>([]);
+  const [isFetchingProducts, setIsFetchingProducts] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  // Fetch products by state when state param changes
+  useEffect(() => {
+    fetchProductsByState(stateIdParam);
+  }, [stateIdParam]);
+
+  const fetchProductsByState = async (stateId: string) => {
+    setIsFetchingProducts(true);
+    setHasError(false);
+    try {
+      const productsCol = collection(db, 'products');
+      const q = query(productsCol, where('stateId', '==', stateId));
+      const querySnapshot = await getDocs(q);
+      
+      let fetchedList: any[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedList.push(doc.data());
+      });
+
+      setProducts(fetchedList);
+    } catch (error) {
+      console.error('Firestore query error:', error);
+      setHasError(true);
+    } finally {
+      setIsFetchingProducts(false);
+    }
+  };
 
   const handleAddToCart = () => {
     setCartCount(prev => prev + 1);
   };
 
-  // Filter products by category and search query
-  const filteredProducts = MOCK_PRODUCTS.filter(product => {
+  // Filter products by category and search query (restricted strictly to active state's products)
+  const filteredProducts = products.filter(product => {
     const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           product.category.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
+  // Filter products with rating >= 4.6 as recommended items (Only on "All" main category landing)
+  const recommendedProducts = products.filter(product => product.rating >= 4.6).slice(0, 6);
+
   const handleLogout = () => {
     router.replace('/login');
   };
 
   const trigger404 = () => {
-    // Navigate to a non-existent route to trigger the +not-found screen
     router.push('/non-existent-page' as any);
   };
 
   const triggerError = () => {
-    // Navigate to a page that will crash and render the Error Boundary
     router.push('/error-test');
   };
 
@@ -154,7 +168,34 @@ export default function Home() {
         </View>
       </View>
 
-      {/* Main Content Area */}
+      {/* Location Status Banner with Change Region Option */}
+      <View style={[styles.locationBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={[styles.locationIconCircle, { backgroundColor: colors.primaryLight }]}>
+            <Ionicons name="location" size={16} color={colors.primary} />
+          </View>
+          <View style={{ marginLeft: Spacing.sm }}>
+            <Text style={[styles.locationLabel, { color: colors.textMuted }]}>State/Region Selected</Text>
+            <Text style={[styles.locationValue, { color: colors.text }]}>
+              {stateNameParam}
+            </Text>
+          </View>
+        </View>
+        <Pressable
+          onPress={() => router.replace('/permissions')}
+          style={({ pressed }) => [
+            styles.changeRegionBtn,
+            {
+              backgroundColor: colors.primaryLight,
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <Text style={[styles.changeRegionBtnText, { color: colors.primary }]}>Change</Text>
+        </Pressable>
+      </View>
+
+      {/* Main Scroll Content */}
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
         
         {/* Banner Promo */}
@@ -207,25 +248,150 @@ export default function Home() {
           })}
         </ScrollView>
 
-        {/* Products Section */}
+        {/* Recommended Row (Only visible on landing "All" category view) */}
+        {!isFetchingProducts && !hasError && selectedCategory === 'All' && recommendedProducts.length > 0 && (
+          <View>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Recommended for You</Text>
+              <Text style={[styles.sectionSubtitle, { color: colors.secondary }]}>Top Rated</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recommendedContainer}
+            >
+              {recommendedProducts.map(product => (
+                <View
+                  key={`rec-${product.id}`}
+                  style={[
+                    styles.recommendedCard,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      ...Shadows.light,
+                    },
+                  ]}
+                >
+                  <Image source={{ uri: product.image }} style={styles.recommendedImage} resizeMode="cover" />
+                  <View style={styles.recommendedDetails}>
+                    <Text numberOfLines={1} style={[styles.recommendedName, { color: colors.text }]}>
+                      {product.name}
+                    </Text>
+                    <View style={styles.recommendedFooter}>
+                      <Text style={[styles.recommendedPrice, { color: colors.primary }]}>
+                        ${product.price.toFixed(2)}
+                      </Text>
+                      <Pressable
+                        onPress={handleAddToCart}
+                        style={({ pressed }) => [
+                          styles.recommendedAddBtn,
+                          {
+                            backgroundColor: colors.secondary,
+                            opacity: pressed ? 0.8 : 1,
+                          },
+                        ]}
+                      >
+                        <Text style={styles.recommendedAddBtnText}>+ Add</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                  <View style={styles.recommendedBadge}>
+                    <Text style={styles.recommendedBadgeText}>⭐ {product.rating}</Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Products Section Header */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             {selectedCategory === 'All' ? 'Featured Products' : `${selectedCategory} Products`}
           </Text>
           <Text style={[styles.sectionSubtitle, { color: colors.secondary }]}>
-            {filteredProducts.length} items
+            {!isFetchingProducts && !hasError ? `${filteredProducts.length} items` : '0 items'}
           </Text>
         </View>
 
-        {/* Products Grid */}
-        {filteredProducts.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="search" size={40} color={colors.textMuted} />
-            <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-              No products found matching &quot;{searchQuery}&quot;
+        {/* Products Grid / Fetch Loader / Empty Fallback state */}
+        {isFetchingProducts ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.textMuted }]}>
+              Loading products for your region...
             </Text>
           </View>
+        ) : hasError ? (
+          /* Error State Fallback */
+          <View style={styles.emptyState}>
+            <View style={[styles.emptyIconBadge, { backgroundColor: colors.error + '10' }]}>
+              <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+            </View>
+            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>Failed to Load Products</Text>
+            <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
+              We encountered an issue loading products from Firestore. Please verify your connection and try again.
+            </Text>
+            <View style={styles.emptyStateActions}>
+              <Pressable
+                onPress={() => fetchProductsByState(stateIdParam)}
+                style={({ pressed }) => [
+                  styles.emptyStateBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="refresh" size={16} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={[styles.emptyStateBtnText, { color: '#fff' }]}>Retry Connection</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : filteredProducts.length === 0 ? (
+          /* Empty State + Retry / Manual selection Fallback */
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIconBadge}>
+              <Ionicons name="gift-outline" size={48} color={colors.textMuted} />
+            </View>
+            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>No Products Available</Text>
+            <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
+              There are no products listed in &quot;{stateNameParam}&quot; yet. Please pick another region.
+            </Text>
+            <View style={styles.emptyStateActions}>
+              <Pressable
+                onPress={() => fetchProductsByState(stateIdParam)}
+                style={({ pressed }) => [
+                  styles.emptyStateBtn,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                    borderWidth: 1,
+                    marginRight: Spacing.sm,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="refresh" size={16} color={colors.text} style={{ marginRight: 6 }} />
+                <Text style={[styles.emptyStateBtnText, { color: colors.text }]}>Retry</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.replace('/permissions')}
+                style={({ pressed }) => [
+                  styles.emptyStateBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="location" size={16} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={[styles.emptyStateBtnText, { color: '#fff' }]}>Change Region</Text>
+              </Pressable>
+            </View>
+          </View>
         ) : (
+          /* Render grid of products */
           <View style={styles.productsGrid}>
             {filteredProducts.map(product => (
               <View
@@ -239,7 +405,7 @@ export default function Home() {
                   },
                 ]}
               >
-                {/* Mock Image Box */}
+                {/* Product Image Box */}
                 <View style={[styles.productImageContainer, { backgroundColor: colors.surface }]}>
                   <Image
                     source={{ uri: product.image }}
@@ -395,6 +561,43 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingVertical: 0,
   },
+  locationBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xs,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+  },
+  locationIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  locationLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  locationValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  changeRegionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: BorderRadius.sm,
+  },
+  changeRegionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   promoBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -440,6 +643,7 @@ const styles = StyleSheet.create({
   categoriesContainer: {
     paddingLeft: Spacing.lg,
     paddingRight: Spacing.sm,
+    paddingBottom: Spacing.xs,
   },
   categoryPill: {
     paddingVertical: 8,
@@ -449,6 +653,65 @@ const styles = StyleSheet.create({
   },
   categoryText: {
     fontSize: 14,
+  },
+  recommendedContainer: {
+    paddingLeft: Spacing.lg,
+    paddingRight: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  recommendedCard: {
+    width: 180,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginRight: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  recommendedImage: {
+    width: '100%',
+    height: 90,
+  },
+  recommendedDetails: {
+    padding: Spacing.sm,
+  },
+  recommendedName: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  recommendedFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  recommendedPrice: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  recommendedAddBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: BorderRadius.xs,
+  },
+  recommendedAddBtnText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  recommendedBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: BorderRadius.xs,
+  },
+  recommendedBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
   },
   productsGrid: {
     flexDirection: 'row',
@@ -525,13 +788,56 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: 60,
+    paddingHorizontal: Spacing.xxl,
     width: '100%',
   },
+  emptyIconBadge: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#F0F4F8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: Spacing.xs,
+  },
   emptyStateText: {
-    fontSize: 15,
-    marginTop: 10,
+    fontSize: 14,
     textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: Spacing.lg,
+  },
+  emptyStateActions: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'center',
+  },
+  emptyStateBtn: {
+    flexDirection: 'row',
+    height: 40,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyStateBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  loadingContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  loadingText: {
+    marginTop: Spacing.md,
+    fontSize: 14,
   },
   // DEV PANEL STYLES
   devPanel: {

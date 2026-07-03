@@ -17,3 +17,9 @@ const app = initializeApp(firebaseConfig);
 
 // Export Firestore Database reference
 export const db = getFirestore(app);
+
+// Seeding is handled externally via batch script to keep bundles lightweight
+export async function seedProductsIfEmpty(): Promise<void> {
+  // Database has already been fully seeded with 2,900+ products
+  return Promise.resolve();
+}

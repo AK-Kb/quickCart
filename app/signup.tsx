@@ -18,6 +18,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { AuthStore } from '../constants/auth';
+const validatePassword = (pass: string) => {
+  const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{6,}$/;
+  return regex.test(pass);
+};
 
 export default function Signup() {
   const router = useRouter();
@@ -56,8 +60,8 @@ export default function Signup() {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMsg('Password must be at least 6 characters long.');
+    if (!validatePassword(password)) {
+      setErrorMsg('Password must contain at least one uppercase letter, one lowercase letter, one digit, one special character, and be at least 6 characters.');
       return;
     }
 
@@ -201,6 +205,11 @@ export default function Signup() {
                   />
                 </Pressable>
               </View>
+              {password.length > 0 && !validatePassword(password) && (
+                <Text style={[styles.passwordValidationError, { color: colors.error }]}>
+                  Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 digit, 1 special character, and be at least 6 characters.
+                </Text>
+              )}
             </View>
 
             {/* Confirm Password Input */}
@@ -533,5 +542,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     paddingHorizontal: Spacing.lg,
+  },
+  passwordValidationError: {
+    fontSize: 12,
+    marginTop: Spacing.xs,
+    paddingHorizontal: 4,
+    lineHeight: 16,
   },
 });

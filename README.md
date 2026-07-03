@@ -48,3 +48,26 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## Database Seeding Workflow
+
+To set up your development and testing Firestore database with localized mock products, you can run the developer seeding script.
+
+### Seeding Requirements
+- **29 State/Region Buckets**: Populates items for all 29 Indian States/Regions.
+- **10 Categories per State**: Electronics, Fashion, Home, Sports, Beauty, Grocery, Books, Toys, Automotive, and Health.
+- **10 Items per Category**: Fully localized item names, descriptions, and realistic Indian cities.
+- **Total Dataset**: Over 2,900+ customized e-commerce products.
+
+### How to Run the Seed
+Run the following npm command in your terminal:
+
+```bash
+npm run seed
+```
+
+### Safe Overwrite Strategy
+This script uses **predictable unique document IDs** (`item_${stateId}_${categoryId}_${index}`). Running the script multiple times will **safely overwrite** documents with updated templates, preventing any duplicate data accumulation or document pollution in your collection.
+
+No administrative features or admin dashboard routes are required; this is purely a developer environment setup task.
+
