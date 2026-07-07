@@ -17,6 +17,7 @@ import * as Location from 'expo-location';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../constants/firebase';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
+import { RegionStore } from '../constants/cart';
 
 // Map of the 29 Indian States/Regions
 const INDIAN_STATES = [
@@ -198,8 +199,9 @@ export default function PermissionsSetup() {
   };
 
   const navigateToHome = (stateId: string, stateName: string) => {
+    RegionStore.setState(stateId, stateName);
     router.replace({
-      pathname: '/home',
+      pathname: '/(tabs)' as any,
       params: { stateId, stateName },
     });
   };

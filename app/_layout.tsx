@@ -1,13 +1,48 @@
-import { Stack, router, ErrorBoundaryProps } from "expo-router";
+import { Stack, router, ErrorBoundaryProps, useSegments } from "expo-router";
 import { View, Text, StyleSheet, Pressable, useColorScheme, Platform } from "react-native";
+import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, Spacing, BorderRadius } from "../constants/theme";
+import { useSessionState } from "../constants/cart";
 
 // Root Layout Stack router
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const theme = colorScheme === 'dark' ? 'dark' : 'light';
   const colors = Colors[theme];
+
+  const segments = useSegments();
+  const user = useSessionState();
+  const [isNavigationReady, setIsNavigationReady] = useState(false);
+
+  // Tiny delay to ensure navigation container mounts cleanly before redirect triggers
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsNavigationReady(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isNavigationReady) return;
+
+    // Check if the current route segment belongs to the authentication flow
+    const routeSegments = segments as string[];
+    const inAuthGroup = 
+      routeSegments[0] === 'login' || 
+      routeSegments[0] === 'signup' || 
+      routeSegments[0] === 'forgot-password' ||
+      routeSegments.length === 0 || 
+      (routeSegments.length === 1 && routeSegments[0] === 'index');
+
+    if (!user && !inAuthGroup) {
+      // Unauthenticated user attempting to access protected screens - redirect to login
+      router.replace('/login');
+    } else if (user && inAuthGroup) {
+      // Authenticated user attempting to access auth screens - redirect to tabs
+      router.replace('/(tabs)');
+    }
+  }, [user, segments, isNavigationReady]);
 
   return (
     <Stack
@@ -23,7 +58,11 @@ export default function RootLayout() {
       <Stack.Screen name="signup" options={{ headerShown: false }} />
       <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
       <Stack.Screen name="permissions" options={{ headerShown: false }} />
-      <Stack.Screen name="home" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="cart" options={{ headerShown: false, presentation: 'modal' }} />
+      <Stack.Screen name="checkout" options={{ headerShown: false }} />
+      <Stack.Screen name="order-success" options={{ headerShown: false }} />
+      <Stack.Screen name="item/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="error-test" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" options={{ headerShown: false }} />
     </Stack>

@@ -8,20 +8,19 @@ import {
   Pressable,
   ScrollView,
   Dimensions,
-  TextInput,
   ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../constants/firebase';
-import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
+import { db } from '../../constants/firebase';
+import { Colors, Spacing, BorderRadius, Shadows } from '../../constants/theme';
+import { CartStore, useCartCount, useRegionState } from '../../constants/cart';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// All 10 categories seeded in Firestore
 const MOCK_CATEGORIES = [
   'All', 
   'Electronics', 
@@ -36,31 +35,29 @@ const MOCK_CATEGORIES = [
   'Health'
 ];
 
-export default function Home() {
+const formatPrice = (price: number): string => {
+  return '₹' + Intl.NumberFormat('en-IN').format(price);
+};
+
+export default function HomeTab() {
   const router = useRouter();
-  const params = useLocalSearchParams();
   const systemScheme = useColorScheme();
   const theme = systemScheme === 'dark' ? 'dark' : 'light';
   const colors = Colors[theme];
 
-  // Retrieve selected/detected state params, defaulting to Delhi
-  const stateIdParam = (params.stateId as string) || 'delhi';
-  const stateNameParam = (params.stateName as string) || 'Delhi';
+  // Retrieve global region state & cart count reactively
+  const activeRegion = useRegionState();
+  const cartCount = useCartCount();
 
-  // Component States
-  const [cartCount, setCartCount] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // Products & Loading / Error States
   const [products, setProducts] = useState<any[]>([]);
   const [isFetchingProducts, setIsFetchingProducts] = useState(true);
   const [hasError, setHasError] = useState(false);
 
   // Fetch products by state when state param changes
   useEffect(() => {
-    fetchProductsByState(stateIdParam);
-  }, [stateIdParam]);
+    fetchProductsByState(activeRegion.id);
+  }, [activeRegion.id]);
 
   const fetchProductsByState = async (stateId: string) => {
     setIsFetchingProducts(true);
@@ -84,42 +81,27 @@ export default function Home() {
     }
   };
 
-  const handleAddToCart = () => {
-    setCartCount(prev => prev + 1);
+  const handleAddToCart = (product: any) => {
+    CartStore.addToCart(product);
   };
 
-  // Filter products by category and search query (restricted strictly to active state's products)
+
+  // Filter products by category
   const filteredProducts = products.filter(product => {
-    const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          product.category.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
+    return selectedCategory === 'All' || product.category === selectedCategory;
   });
 
-  // Filter products with rating >= 4.6 as recommended items (Only on "All" main category landing)
   const recommendedProducts = products.filter(product => product.rating >= 4.6).slice(0, 6);
 
-  const handleLogout = () => {
-    router.replace('/login');
-  };
-
-  const trigger404 = () => {
-    router.push('/non-existent-page' as any);
-  };
-
-  const triggerError = () => {
-    router.push('/error-test');
-  };
-
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       
       {/* Top Navbar */}
       <View style={styles.homeHeader}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Image
-            source={require('../assets/images/icon.png')}
+            source={require('../../assets/images/icon.png')}
             style={styles.logoTiny}
             resizeMode="contain"
           />
@@ -129,8 +111,10 @@ export default function Home() {
         </View>
         
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {/* Cart Icon & Badge */}
-          <Pressable style={[styles.cartIconContainer, { backgroundColor: colors.surface, marginRight: Spacing.sm }]}>
+          <Pressable
+            onPress={() => router.push('/cart')}
+            style={styles.cartIconContainer}
+          >
             <Ionicons name="cart-outline" size={20} color={colors.text} />
             {cartCount > 0 && (
               <View style={[styles.cartBadge, { backgroundColor: colors.secondary }]}>
@@ -138,34 +122,20 @@ export default function Home() {
               </View>
             )}
           </Pressable>
-
-          {/* Logout Button */}
-          <Pressable 
-            onPress={handleLogout}
-            style={[styles.cartIconContainer, { backgroundColor: colors.secondaryLight }]}
-          >
-            <Ionicons name="log-out-outline" size={20} color={colors.secondary} />
-          </Pressable>
         </View>
       </View>
 
-      {/* Search Bar */}
+      {/* Read-Only Search Bar that routes to Explore tab when tapped */}
       <View style={styles.searchSection}>
-        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Pressable
+          onPress={() => router.push('/explore')}
+          style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
           <Ionicons name="search-outline" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search products, brands, categories..."
-            placeholderTextColor={colors.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-            </Pressable>
-          )}
-        </View>
+          <Text style={{ color: colors.textMuted, fontSize: 15, flex: 1 }}>
+            Search products, brands, categories...
+          </Text>
+        </Pressable>
       </View>
 
       {/* Location Status Banner with Change Region Option */}
@@ -177,7 +147,7 @@ export default function Home() {
           <View style={{ marginLeft: Spacing.sm }}>
             <Text style={[styles.locationLabel, { color: colors.textMuted }]}>State/Region Selected</Text>
             <Text style={[styles.locationValue, { color: colors.text }]}>
-              {stateNameParam}
+              {activeRegion.name}
             </Text>
           </View>
         </View>
@@ -261,13 +231,15 @@ export default function Home() {
               contentContainerStyle={styles.recommendedContainer}
             >
               {recommendedProducts.map(product => (
-                <View
+                <Pressable
                   key={`rec-${product.id}`}
-                  style={[
+                  onPress={() => router.push(`/item/${product.id}` as any)}
+                  style={({ pressed }) => [
                     styles.recommendedCard,
                     {
                       backgroundColor: colors.card,
                       borderColor: colors.border,
+                      opacity: pressed ? 0.95 : 1,
                       ...Shadows.light,
                     },
                   ]}
@@ -279,10 +251,10 @@ export default function Home() {
                     </Text>
                     <View style={styles.recommendedFooter}>
                       <Text style={[styles.recommendedPrice, { color: colors.primary }]}>
-                        ${product.price.toFixed(2)}
+                        {formatPrice(product.price)}
                       </Text>
                       <Pressable
-                        onPress={handleAddToCart}
+                        onPress={() => handleAddToCart(product)}
                         style={({ pressed }) => [
                           styles.recommendedAddBtn,
                           {
@@ -298,7 +270,7 @@ export default function Home() {
                   <View style={styles.recommendedBadge}>
                     <Text style={styles.recommendedBadgeText}>⭐ {product.rating}</Text>
                   </View>
-                </View>
+                </Pressable>
               ))}
             </ScrollView>
           </View>
@@ -334,7 +306,7 @@ export default function Home() {
             </Text>
             <View style={styles.emptyStateActions}>
               <Pressable
-                onPress={() => fetchProductsByState(stateIdParam)}
+                onPress={() => fetchProductsByState(activeRegion.id)}
                 style={({ pressed }) => [
                   styles.emptyStateBtn,
                   {
@@ -356,11 +328,11 @@ export default function Home() {
             </View>
             <Text style={[styles.emptyStateTitle, { color: colors.text }]}>No Products Available</Text>
             <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-              There are no products listed in &quot;{stateNameParam}&quot; yet. Please pick another region.
+              There are no products listed in &quot;{activeRegion.name}&quot; yet. Please pick another region.
             </Text>
             <View style={styles.emptyStateActions}>
               <Pressable
-                onPress={() => fetchProductsByState(stateIdParam)}
+                onPress={() => fetchProductsByState(activeRegion.id)}
                 style={({ pressed }) => [
                   styles.emptyStateBtn,
                   {
@@ -394,13 +366,15 @@ export default function Home() {
           /* Render grid of products */
           <View style={styles.productsGrid}>
             {filteredProducts.map(product => (
-              <View
+              <Pressable
                 key={product.id}
-                style={[
+                onPress={() => router.push(`/item/${product.id}` as any)}
+                style={({ pressed }) => [
                   styles.productCard,
                   {
                     backgroundColor: colors.card,
                     borderColor: colors.border,
+                    opacity: pressed ? 0.95 : 1,
                     ...Shadows.light,
                   },
                 ]}
@@ -429,11 +403,11 @@ export default function Home() {
                   
                   <View style={styles.productFooter}>
                     <Text style={[styles.productPrice, { color: colors.primary }]}>
-                      ${product.price.toFixed(2)}
+                      {formatPrice(product.price)}
                     </Text>
                     
                     <Pressable
-                      onPress={handleAddToCart}
+                      onPress={() => handleAddToCart(product)}
                       style={({ pressed }) => [
                         styles.addToCartButton,
                         {
@@ -446,52 +420,12 @@ export default function Home() {
                     </Pressable>
                   </View>
                 </View>
-              </View>
+              </Pressable>
             ))}
           </View>
         )}
         
-        {/* ==================== DIAGNOSTIC / DEV PANEL ==================== */}
-        <View style={[styles.devPanel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.devTitle, { color: colors.text }]}>🛠️ Diagnostic & Routing Tests</Text>
-          <Text style={[styles.devDesc, { color: colors.textMuted }]}>
-            Verify custom 404 (Page Not Found) and layout Error Boundary screens by triggering them below:
-          </Text>
 
-          <View style={styles.devBtnRow}>
-            {/* 404 trigger */}
-            <Pressable
-              onPress={trigger404}
-              style={({ pressed }) => [
-                styles.devBtn,
-                {
-                  backgroundColor: colors.primaryLight,
-                  borderColor: colors.primary,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Ionicons name="alert-circle-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-              <Text style={[styles.devBtnText, { color: colors.primary }]}>Trigger 404 Page</Text>
-            </Pressable>
-
-            {/* Error trigger */}
-            <Pressable
-              onPress={triggerError}
-              style={({ pressed }) => [
-                styles.devBtn,
-                {
-                  backgroundColor: colors.secondaryLight,
-                  borderColor: colors.secondary,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Ionicons name="bug-outline" size={16} color={colors.secondary} style={{ marginRight: 6 }} />
-              <Text style={[styles.devBtnText, { color: colors.secondary }]}>Trigger Error Page</Text>
-            </Pressable>
-          </View>
-        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -555,11 +489,6 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    paddingVertical: 0,
   },
   locationBanner: {
     flexDirection: 'row',
@@ -839,7 +768,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     fontSize: 14,
   },
-  // DEV PANEL STYLES
   devPanel: {
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.xxl,

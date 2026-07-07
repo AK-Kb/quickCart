@@ -13,7 +13,7 @@ export default function NotFound() {
 
   const handleGoHome = () => {
     // Navigate back to the home route
-    router.replace('/home');
+    router.replace('/(tabs)' as any);
   };
 
   return (

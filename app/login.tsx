@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { AuthStore } from '../constants/auth';
+import { SessionStore } from '../constants/cart';
 
 export default function Login() {
   const router = useRouter();
@@ -40,6 +41,7 @@ export default function Login() {
     try {
       const user = await AuthStore.login(mobile.trim(), password);
       if (user) {
+        SessionStore.setUser(user);
         // Successful login - redirect to permissions request flow
         router.replace('/permissions');
       } else {
