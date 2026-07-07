@@ -331,19 +331,27 @@ export default function ItemDetailScreen() {
   const isOutOfStock = product.availability === 'Out of Stock' || product.status === 'Out of Stock';
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} translucent />
 
       {/* Floating Header */}
-      <View style={styles.header}>
+      <View style={[
+        styles.header, 
+        { 
+          top: insets.top > 0 ? insets.top + 8 : 16,
+          left: Spacing.lg,
+          right: Spacing.lg,
+        }
+      ]}>
         <Pressable
           onPress={() => router.back()}
           style={({ pressed }) => [
             styles.headerBtn,
             {
-              backgroundColor: colors.surface,
+              backgroundColor: colors.card,
               borderColor: colors.border,
-              opacity: pressed ? 0.8 : 1,
+              opacity: pressed ? 0.85 : 1,
+              ...Shadows.light,
             },
           ]}
         >
@@ -355,9 +363,10 @@ export default function ItemDetailScreen() {
           style={({ pressed }) => [
             styles.headerBtn,
             {
-              backgroundColor: colors.surface,
+              backgroundColor: colors.card,
               borderColor: colors.border,
-              opacity: pressed ? 0.8 : 1,
+              opacity: pressed ? 0.85 : 1,
+              ...Shadows.light,
             },
           ]}
         >
@@ -373,7 +382,10 @@ export default function ItemDetailScreen() {
       <ScrollView
         ref={scrollViewRef}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom > 0 ? insets.bottom + 100 : 120 }
+        ]}
       >
         
         {/* Large Product Image */}
@@ -387,6 +399,16 @@ export default function ItemDetailScreen() {
         {/* Product Details info section */}
         <View style={styles.detailsSection}>
           
+          {/* Category path/brand */}
+          <Text style={[styles.categoryHeaderPath, { color: colors.textMuted }]}>
+            {product.category.toUpperCase()}
+          </Text>
+
+          <Text style={[styles.productName, { color: colors.text }]}>
+            {product.title || product.name}
+          </Text>
+          
+          {/* Reviews Rating & Stock Availability Row */}
           <View style={styles.ratingRow}>
             <View style={styles.ratingBadge}>
               <Text style={styles.ratingText}>⭐ {product.rating}</Text>
@@ -411,10 +433,6 @@ export default function ItemDetailScreen() {
               </Text>
             </View>
           </View>
-
-          <Text style={[styles.productName, { color: colors.text }]}>
-            {product.title || product.name}
-          </Text>
 
           <Text style={[styles.productPrice, { color: colors.primary }]}>
             {formatPrice(product.price)}
@@ -538,9 +556,8 @@ export default function ItemDetailScreen() {
               }}
             />
           )}
-        </View>
 
-        <View style={{ height: 100 }} />
+        </View>
       </ScrollView>
 
       {/* Sticky Bottom Actions */}
@@ -589,7 +606,7 @@ export default function ItemDetailScreen() {
           </Text>
         </Pressable>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -632,9 +649,6 @@ const styles = StyleSheet.create({
   },
   header: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 20,
-    left: Spacing.lg,
-    right: Spacing.lg,
     flexDirection: 'row',
     justifyContent: 'space-between',
     zIndex: 10,
@@ -674,7 +688,7 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     width: '100%',
-    height: SCREEN_WIDTH * 0.85,
+    height: SCREEN_WIDTH * 1.12,
     position: 'relative',
   },
   productImage: {
@@ -820,6 +834,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
+  },
+  categoryHeaderPath: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    marginBottom: 4,
   },
   footerPriceCol: {
     justifyContent: 'center',
