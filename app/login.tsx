@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -17,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { AuthStore } from '../constants/auth';
-import { SessionStore } from '../constants/cart';
+import { SessionStore, CartStore } from '../constants/cart';
 
 export default function Login() {
   const router = useRouter();
@@ -25,30 +26,45 @@ export default function Login() {
   const theme = systemScheme === 'dark' ? 'dark' : 'light';
   const colors = Colors[theme];
 
-  const [mobile, setMobile] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const handleLogin = async () => {
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
     setErrorMsg('');
     
-    if (!mobile.trim() || !password.trim()) {
-      setErrorMsg('Please enter both mobile number and password.');
+    if (!email.trim() || !password.trim()) {
+      setErrorMsg('Please enter both email and password.');
+      setIsLoggingIn(false);
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMsg('Please enter a valid email address.');
+      setIsLoggingIn(false);
       return;
     }
 
     try {
-      const user = await AuthStore.login(mobile.trim(), password);
+      const user = await AuthStore.login(email.trim().toLowerCase(), password);
       if (user) {
         SessionStore.setUser(user);
+        // Load cart items from Firestore on successful login
+        await CartStore.loadFromFirestore();
         // Successful login - redirect to permissions request flow
         router.replace('/permissions');
       } else {
-        setErrorMsg('Invalid mobile number or password. If you are new, please Sign Up first.');
+        setErrorMsg('Invalid email or password. If you are new, please Sign Up first.');
       }
     } catch {
       setErrorMsg('An error occurred during login. Please try again.');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -75,7 +91,7 @@ export default function Login() {
               Login to enjoy the fastest shopping experience!
             </Text>
           </View>
-
+ 
           {/* Form Card */}
           <View style={[styles.formCard, { backgroundColor: colors.card, borderColor: colors.border, ...Shadows.light }]}>
             <Text style={[styles.formHeader, { color: colors.text }]}>Welcome Back</Text>
@@ -86,19 +102,20 @@ export default function Login() {
               </View>
             ) : null}
 
-            {/* Mobile Input */}
+            {/* Email Input */}
             <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Mobile Number</Text>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Email Address</Text>
               <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Ionicons name="call-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                <Ionicons name="mail-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
                 <TextInput
                   style={[styles.input, { color: colors.text }]}
-                  placeholder="Enter 10-digit mobile number"
+                  placeholder="Enter your email address"
                   placeholderTextColor={colors.textMuted}
-                  keyboardType="phone-pad"
-                  autoComplete="tel"
-                  value={mobile}
-                  onChangeText={setMobile}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  value={email}
+                  onChangeText={setEmail}
                 />
               </View>
             </View>
@@ -139,18 +156,22 @@ export default function Login() {
               </Text>
             </Pressable>
 
-            {/* Login Button */}
             <Pressable
               onPress={handleLogin}
+              disabled={isLoggingIn}
               style={({ pressed }) => [
                 styles.submitBtn,
                 {
                   backgroundColor: colors.primary,
-                  opacity: pressed ? 0.9 : 1,
+                  opacity: pressed || isLoggingIn ? 0.8 : 1,
                 },
               ]}
             >
-              <Text style={styles.submitBtnText}>Login</Text>
+              {isLoggingIn ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.submitBtnText}>Login</Text>
+              )}
             </Pressable>
           </View>
 

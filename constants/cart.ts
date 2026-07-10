@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db } from './firebase';
 
 // Global Cart Store
 export interface CartItem {
@@ -9,6 +11,7 @@ export interface CartItem {
   category: string;
   rating: number;
   quantity: number;
+  total: number; // total = price * quantity
 }
 
 let cartItems: CartItem[] = [];
@@ -21,6 +24,7 @@ export const CartStore = {
   setDiscountPercent: (percent: number) => {
     discountPercent = percent;
     cartListeners.forEach(listener => listener([...cartItems]));
+    CartStore.syncToFirestore();
   },
   getCartCount: () => {
     return cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -30,29 +34,38 @@ export const CartStore = {
     const existingItem = cartItems.find(item => item.id === product.id);
     if (existingItem) {
       existingItem.quantity += quantity;
+      existingItem.total = existingItem.price * existingItem.quantity;
     } else {
       cartItems.push({
         id: product.id,
-        name: product.name,
+        name: product.name || product.title,
         price: product.price,
         image: product.image,
         category: product.category,
-        rating: product.rating,
+        rating: product.rating || 4.5,
         quantity: quantity,
+        total: product.price * quantity,
       });
     }
     cartListeners.forEach(listener => listener([...cartItems]));
+    CartStore.syncToFirestore();
   },
   clearCart: () => {
     cartItems = [];
     discountPercent = 0;
     cartListeners.forEach(listener => listener([]));
+    const user = SessionStore.getUser();
+    if (user) {
+      CartStore.syncToFirestore();
+    }
   },
   incrementQuantity: (productId: string) => {
     const item = cartItems.find(item => item.id === productId);
     if (item) {
       item.quantity += 1;
+      item.total = item.price * item.quantity;
       cartListeners.forEach(listener => listener([...cartItems]));
+      CartStore.syncToFirestore();
     }
   },
   decrementQuantity: (productId: string) => {
@@ -60,15 +73,58 @@ export const CartStore = {
     if (item) {
       if (item.quantity > 1) {
         item.quantity -= 1;
+        item.total = item.price * item.quantity;
       } else {
         cartItems = cartItems.filter(item => item.id !== productId);
       }
       cartListeners.forEach(listener => listener([...cartItems]));
+      CartStore.syncToFirestore();
     }
   },
   removeItem: (productId: string) => {
     cartItems = cartItems.filter(item => item.id !== productId);
     cartListeners.forEach(listener => listener([...cartItems]));
+    CartStore.syncToFirestore();
+  },
+  syncToFirestore: async () => {
+    const user = SessionStore.getUser();
+    if (!user || !user.email) return;
+    try {
+      const cartRef = doc(db, 'carts', user.email.toLowerCase());
+      if (cartItems.length === 0) {
+        await deleteDoc(cartRef);
+      } else {
+        await setDoc(cartRef, {
+          items: cartItems,
+          discountPercent,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } catch (e) {
+      console.error('Error syncing cart to Firestore:', e);
+    }
+  },
+  loadFromFirestore: async () => {
+    const user = SessionStore.getUser();
+    if (!user || !user.email) return;
+    try {
+      const cartRef = doc(db, 'carts', user.email.toLowerCase());
+      const snap = await getDoc(cartRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        cartItems = (data.items || []).map((item: any) => ({
+          ...item,
+          total: item.total || (item.price * item.quantity)
+        }));
+        discountPercent = data.discountPercent || 0;
+      } else {
+        cartItems = [];
+        discountPercent = 0;
+      }
+      cartListeners.forEach(listener => listener([...cartItems]));
+    } catch (e) {
+      console.error('Error loading cart from Firestore:', e);
+    }
   },
   subscribe: (listener: (items: CartItem[]) => void) => {
     cartListeners.add(listener);
@@ -135,16 +191,27 @@ export function useRegionState() {
 }
 
 // Global User Session Store
-let currentUser: { name: string; mobile: string } | null = null;
-const sessionListeners = new Set<(user: { name: string; mobile: string } | null) => void>();
+export interface SessionUser {
+  name: string;
+  email: string;
+  mobile?: string;
+}
+
+let currentUser: SessionUser | null = null;
+const sessionListeners = new Set<(user: SessionUser | null) => void>();
 
 export const SessionStore = {
   getUser: () => currentUser,
-  setUser: (user: { name: string; mobile: string } | null) => {
+  setUser: (user: SessionUser | null) => {
     currentUser = user;
     sessionListeners.forEach(listener => listener(currentUser));
+    if (user) {
+      CartStore.loadFromFirestore();
+    } else {
+      CartStore.clearCart();
+    }
   },
-  subscribe: (listener: (user: { name: string; mobile: string } | null) => void) => {
+  subscribe: (listener: (user: SessionUser | null) => void) => {
     sessionListeners.add(listener);
     return () => {
       sessionListeners.delete(listener);

@@ -72,7 +72,8 @@ export default function OrdersTab() {
   const theme = systemScheme === 'dark' ? 'dark' : 'light';
   const colors = Colors[theme];
 
-  const currentUser = SessionStore.getUser() || { name: 'QuickCart Customer', mobile: '9876543210' };
+  // Retrieve user session & active region state
+  const currentUser = SessionStore.getUser() || { name: 'QuickCart Customer', email: 'customer@quickcart.com', mobile: '9876543210' };
   const [orders, setOrders] = useState<OrderDisplay[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -84,7 +85,9 @@ export default function OrdersTab() {
         setIsLoading(true);
         try {
           const ordersCol = collection(db, 'orders');
-          const q = query(ordersCol, where('userMobile', '==', currentUser.mobile));
+          const q = currentUser.email 
+            ? query(ordersCol, where('userEmail', '==', currentUser.email.toLowerCase()))
+            : query(ordersCol, where('userMobile', '==', currentUser.mobile));
           const querySnapshot = await getDocs(q);
           const list: OrderDisplay[] = [];
 
@@ -130,7 +133,7 @@ export default function OrdersTab() {
       return () => {
         isMounted = false;
       };
-    }, [currentUser.mobile])
+    }, [currentUser.mobile, currentUser.email])
   );
 
   const displayedOrders = orders.length > 0 ? orders : MOCK_ORDERS;

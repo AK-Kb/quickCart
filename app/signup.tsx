@@ -10,14 +10,18 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../constants/firebase';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { AuthStore } from '../constants/auth';
+
 const validatePassword = (pass: string) => {
   const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{6,}$/;
   return regex.test(pass);
@@ -31,6 +35,7 @@ export default function Signup() {
 
   // Form Fields
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -39,77 +44,131 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Errors & Modals
+  // Errors & Navigation Trigger state
   const [errorMsg, setErrorMsg] = useState('');
-  const [isOtpModalVisible, setIsOtpModalVisible] = useState(false);
-  const [otpInput, setOtpInput] = useState('');
-  const [otpError, setOtpError] = useState('');
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSignupSubmit = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     setErrorMsg('');
 
     // Validations
-    if (!name.trim() || !mobile.trim() || !password.trim() || !confirmPassword.trim()) {
-      setErrorMsg('All fields are required.');
+    if (!name.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
+      setErrorMsg('Name, Email, Password, and Confirm Password are required.');
+      setIsSubmitting(false);
       return;
     }
 
-    if (mobile.trim().length !== 10 || isNaN(Number(mobile))) {
-      setErrorMsg('Please enter a valid 10-digit mobile number.');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMsg('Please enter a valid email address.');
+      setIsSubmitting(false);
       return;
+    }
+
+    if (mobile.trim() !== '') {
+      if (mobile.trim().length !== 10 || isNaN(Number(mobile))) {
+        setErrorMsg('If entered, mobile number must be a valid 10-digit number.');
+        setIsSubmitting(false);
+        return;
+      }
     }
 
     if (!validatePassword(password)) {
       setErrorMsg('Password must contain at least one uppercase letter, one lowercase letter, one digit, one special character, and be at least 6 characters.');
+      setIsSubmitting(false);
       return;
     }
 
     if (password !== confirmPassword) {
       setErrorMsg('Passwords do not match.');
+      setIsSubmitting(false);
       return;
     }
 
     try {
-      const exists = await AuthStore.userExists(mobile.trim());
+      const exists = await AuthStore.userExists(email.trim().toLowerCase());
       if (exists) {
-        setErrorMsg('This mobile number is already registered. Please Login.');
+        setErrorMsg('This email address is already registered. Please Login.');
+        setIsSubmitting(false);
         return;
       }
     } catch {
       setErrorMsg('An error occurred. Please try again.');
+      setIsSubmitting(false);
       return;
     }
 
-    // Open OTP modal if verification triggers
-    setOtpInput('');
-    setOtpError('');
-    setIsOtpModalVisible(true);
-  };
+    // Generate 6-digit OTP code securely
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 5);
 
-  const handleVerifyOtp = async () => {
-    setOtpError('');
+    try {
+      // Save code securely in Firestore 'otps' collection
+      await setDoc(doc(db, 'otps', email.toLowerCase().trim()), {
+        code: otp,
+        expiresAt: expiresAt.toISOString(),
+        used: false,
+        email: email.toLowerCase().trim(),
+      });
 
-    if (otpInput.trim() === '123456') {
-      // Correct OTP
+      // Send code using local OTP backend or fallback to Cloud Function
       try {
-        const registerSuccess = await AuthStore.register(name.trim(), mobile.trim(), password);
+        const hostUri = Constants.expoConfig?.hostUri || '';
+        let hostIp = hostUri ? hostUri.split(':')[0] : 'localhost';
+        if (hostIp === 'localhost' && Platform.OS === 'android') {
+          hostIp = '10.0.2.2';
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
         
-        if (registerSuccess) {
-          setIsSuccess(true);
-          setTimeout(() => {
-            setIsOtpModalVisible(false);
-            setIsSuccess(false);
-            router.replace('/login');
-          }, 2000);
-        } else {
-          setOtpError('Registration failed. Please try again.');
+        const response = await fetch(`http://${hostIp}:3000/send-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.toLowerCase().trim(), otp }),
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error('Local server failed');
         }
       } catch {
-        setOtpError('Registration failed. Please try again.');
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+          await fetch('https://us-central1-quickcart-3cd3e.cloudfunctions.net/sendOTP', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email.toLowerCase().trim(), otp }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+        } catch {
+          console.log(`[DEV OTP DELIVERY] Code for ${email} is: ${otp}`);
+        }
       }
-    } else {
-      setOtpError('Incorrect OTP code. Hint: Use 123456');
+
+      // Navigate to separate OTP verification screen with parameters
+      router.push({
+        pathname: '/otp' as any,
+        params: {
+          email: email.toLowerCase().trim(),
+          name: name.trim(),
+          password,
+          mobile: mobile.trim(),
+        },
+      });
+    } catch (e) {
+      console.error('Error during OTP initialization:', e);
+      setErrorMsg('Failed to initiate verification OTP. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -164,9 +223,27 @@ export default function Signup() {
               </View>
             </View>
 
+            {/* Email Input */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Email Address</Text>
+              <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="mail-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  placeholder="Enter your email address"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  value={email}
+                  onChangeText={setEmail}
+                />
+              </View>
+            </View>
+
             {/* Mobile Input */}
             <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Mobile Number</Text>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Mobile Number (Optional)</Text>
               <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Ionicons name="call-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
                 <TextInput
@@ -241,16 +318,21 @@ export default function Signup() {
             {/* Submit Button */}
             <Pressable
               onPress={handleSignupSubmit}
+              disabled={isSubmitting}
               style={({ pressed }) => [
                 styles.submitBtn,
                 {
                   backgroundColor: colors.primary,
-                  opacity: pressed ? 0.9 : 1,
+                  opacity: pressed || isSubmitting ? 0.8 : 1,
                   marginTop: Spacing.md,
                 },
               ]}
             >
-              <Text style={styles.submitBtnText}>Sign Up</Text>
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.submitBtnText}>Sign Up</Text>
+              )}
             </Pressable>
           </View>
 
@@ -266,83 +348,6 @@ export default function Signup() {
 
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* ==================== OTP VERIFICATION MODAL ==================== */}
-      <Modal
-        visible={isOtpModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsOtpModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            
-            {/* Modal Header */}
-            <View style={styles.modalHeaderRow}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Verify Mobile</Text>
-              {!isSuccess && (
-                <Pressable onPress={() => setIsOtpModalVisible(false)} style={styles.closeModalBtn}>
-                  <Ionicons name="close" size={24} color={colors.text} />
-                </Pressable>
-              )}
-            </View>
-
-            {isSuccess ? (
-              /* Verification Success State */
-              <View style={styles.successState}>
-                <View style={[styles.successBadge, { backgroundColor: colors.success + '20' }]}>
-                  <Ionicons name="checkmark-circle" size={54} color={colors.success} />
-                </View>
-                <Text style={[styles.successTitle, { color: colors.text }]}>Verified Successfully!</Text>
-                <Text style={[styles.successSubtitle, { color: colors.textMuted }]}>
-                  Your account has been registered. Redirecting to Login...
-                </Text>
-              </View>
-            ) : (
-              /* OTP Form State */
-              <View>
-                <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
-                  An OTP has been sent to your mobile <Text style={{ fontWeight: 'bold', color: colors.text }}>+91 {mobile}</Text>. Please enter the code to complete verification.
-                </Text>
-
-                {otpError ? (
-                  <View style={[styles.errorContainer, { backgroundColor: colors.error + '15', borderColor: colors.error }]}>
-                    <Text style={[styles.errorText, { color: colors.error }]}>{otpError}</Text>
-                  </View>
-                ) : null}
-
-                <View style={styles.otpInputGroup}>
-                  <TextInput
-                    style={[styles.otpInput, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
-                    placeholder="Enter 6-digit OTP"
-                    placeholderTextColor={colors.textMuted}
-                    maxLength={6}
-                    keyboardType="number-pad"
-                    value={otpInput}
-                    onChangeText={setOtpInput}
-                  />
-                  <Text style={[styles.otpHint, { color: colors.secondary }]}>
-                    Default OTP to verify: <Text style={{ fontWeight: 'bold' }}>123456</Text>
-                  </Text>
-                </View>
-
-                <Pressable
-                  onPress={handleVerifyOtp}
-                  style={({ pressed }) => [
-                    styles.verifyBtn,
-                    {
-                      backgroundColor: colors.primary,
-                      opacity: pressed ? 0.9 : 1,
-                    },
-                  ]}
-                >
-                  <Text style={styles.verifyBtnText}>Verify OTP</Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
 
     </SafeAreaView>
   );

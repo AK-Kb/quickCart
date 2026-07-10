@@ -21,7 +21,7 @@ export default function ProfileTab() {
   const colors = Colors[theme];
 
   // Retrieve user session & active region state
-  const user = SessionStore.getUser() || { name: 'QuickCart Customer', mobile: '9876543210' };
+  const user = SessionStore.getUser() || { name: 'QuickCart Customer', email: 'customer@quickcart.com', mobile: '9876543210' };
   const activeRegion = useRegionState();
 
   const handleLogout = () => {
@@ -49,7 +49,8 @@ export default function ProfileTab() {
             </Text>
           </View>
           <Text style={styles.userName}>{user.name}</Text>
-          <Text style={styles.userMobile}>+91 {user.mobile}</Text>
+          <Text style={styles.userMobile}>{user.email}</Text>
+          {user.mobile ? <Text style={styles.userMobile}>+91 {user.mobile}</Text> : null}
         </View>
 
         {/* Selected Region info card */}

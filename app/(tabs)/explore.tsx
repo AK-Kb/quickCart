@@ -54,16 +54,37 @@ export default function ExploreTab() {
   // Search & Filters State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [categories, setCategories] = useState<string[]>(MOCK_CATEGORIES);
 
   // Firestore product data
   const [products, setProducts] = useState<any[]>([]);
   const [isFetchingProducts, setIsFetchingProducts] = useState(true);
   const [hasError, setHasError] = useState(false);
 
-  // Fetch products by state on mount and when active region updates
+  // Fetch products and categories when activeRegion changes
   useEffect(() => {
     fetchProductsByState(activeRegion.id);
   }, [activeRegion.id]);
+
+  useEffect(() => {
+    const fetchCategoriesFromFirestore = async () => {
+      try {
+        const catCol = collection(db, 'categories');
+        const snap = await getDocs(catCol);
+        if (!snap.empty) {
+          const list: string[] = ['All'];
+          snap.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.name) list.push(data.name);
+          });
+          setCategories(list);
+        }
+      } catch (e) {
+        console.log('Error loading categories from Firestore on explore tab:', e);
+      }
+    };
+    fetchCategoriesFromFirestore();
+  }, []);
 
   // Automatically focus the search input on mount
   useEffect(() => {
@@ -167,7 +188,7 @@ export default function ExploreTab() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoriesContainer}
         >
-          {MOCK_CATEGORIES.map(category => {
+          {categories.map(category => {
             const isSelected = selectedCategory === category;
             return (
               <Pressable

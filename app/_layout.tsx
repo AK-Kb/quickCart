@@ -32,6 +32,7 @@ export default function RootLayout() {
       routeSegments[0] === 'login' || 
       routeSegments[0] === 'signup' || 
       routeSegments[0] === 'forgot-password' ||
+      routeSegments[0] === 'otp' ||
       routeSegments.length === 0 || 
       (routeSegments.length === 1 && routeSegments[0] === 'index');
 
@@ -57,6 +58,7 @@ export default function RootLayout() {
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="signup" options={{ headerShown: false }} />
       <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
+      <Stack.Screen name="otp" options={{ headerShown: false }} />
       <Stack.Screen name="permissions" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="cart" options={{ headerShown: false, presentation: 'modal' }} />

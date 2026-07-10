@@ -33,7 +33,7 @@ export default function CheckoutScreen() {
   const colors = Colors[theme];
 
   // Retrieve current user and cart items
-  const currentUser = SessionStore.getUser() || { name: 'QuickCart Customer', mobile: '9876543210' };
+  const currentUser = SessionStore.getUser() || { name: 'QuickCart Customer', email: 'customer@quickcart.com', mobile: '9876543210' };
   const cartItems = useCartItems();
   const discountPercent = CartStore.getDiscountPercent();
 
@@ -69,7 +69,8 @@ export default function CheckoutScreen() {
       const orderRef = doc(collection(db, 'orders'), orderId);
       const orderDoc = {
         orderId,
-        userMobile: currentUser.mobile,
+        userMobile: currentUser.mobile || '',
+        userEmail: currentUser.email.toLowerCase(),
         userName: currentUser.name,
         items: cartItems.map(item => ({
           id: item.id,
@@ -93,6 +94,18 @@ export default function CheckoutScreen() {
 
       // Write to Firestore database
       await setDoc(orderRef, orderDoc);
+
+      // Save corresponding tracking doc in Firestore 'tracking' collection
+      const trackingRef = doc(collection(db, 'tracking'), orderId);
+      const trackingDoc = {
+        orderId,
+        userEmail: currentUser.email.toLowerCase(),
+        userMobile: currentUser.mobile || '',
+        status: 'Order Placed',
+        estimatedDelivery: new Date(Date.now() + 45 * 60 * 1000).toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      await setDoc(trackingRef, trackingDoc);
 
       router.replace({
         pathname: '/order-success' as any,

@@ -14,7 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db } from '../../constants/firebase';
 import { Colors, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { CartStore, useCartCount, useRegionState } from '../../constants/cart';
@@ -50,14 +50,40 @@ export default function HomeTab() {
   const cartCount = useCartCount();
 
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [categories, setCategories] = useState<string[]>(MOCK_CATEGORIES);
   const [products, setProducts] = useState<any[]>([]);
   const [isFetchingProducts, setIsFetchingProducts] = useState(true);
   const [hasError, setHasError] = useState(false);
 
-  // Fetch products by state when state param changes
+  // Fetch products and categories when activeRegion changes
   useEffect(() => {
     fetchProductsByState(activeRegion.id);
   }, [activeRegion.id]);
+
+  useEffect(() => {
+    const fetchCategoriesFromFirestore = async () => {
+      try {
+        const catCol = collection(db, 'categories');
+        const snap = await getDocs(catCol);
+        if (!snap.empty) {
+          const list: string[] = ['All'];
+          snap.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.name) list.push(data.name);
+          });
+          setCategories(list);
+        } else {
+          // Auto-seed categories collection if empty
+          for (const catName of MOCK_CATEGORIES.slice(1)) {
+            await setDoc(doc(db, 'categories', catName.toLowerCase()), { name: catName });
+          }
+        }
+      } catch (e) {
+        console.log('Error loading categories from Firestore, using mock fallback:', e);
+      }
+    };
+    fetchCategoriesFromFirestore();
+  }, []);
 
   const fetchProductsByState = async (stateId: string) => {
     setIsFetchingProducts(true);
@@ -189,7 +215,7 @@ export default function HomeTab() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoriesContainer}
         >
-          {MOCK_CATEGORIES.map(category => {
+          {categories.map(category => {
             const isSelected = selectedCategory === category;
             return (
               <Pressable
