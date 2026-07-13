@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from './firebase';
 
 // Global Cart Store
@@ -190,11 +191,15 @@ export function useRegionState() {
   return state;
 }
 
+// ─── Session Persistence Key ──────────────────────────────────────────────────
+const SESSION_KEY = '@quickcart_session';
+
 // Global User Session Store
 export interface SessionUser {
   name: string;
   email: string;
   mobile?: string;
+  role?: string;
 }
 
 let currentUser: SessionUser | null = null;
@@ -202,15 +207,43 @@ const sessionListeners = new Set<(user: SessionUser | null) => void>();
 
 export const SessionStore = {
   getUser: () => currentUser,
+
   setUser: (user: SessionUser | null) => {
     currentUser = user;
     sessionListeners.forEach(listener => listener(currentUser));
+    // Persist to AsyncStorage for app restart survival
     if (user) {
+      AsyncStorage.setItem(SESSION_KEY, JSON.stringify(user)).catch(() => null);
       CartStore.loadFromFirestore();
     } else {
+      AsyncStorage.removeItem(SESSION_KEY).catch(() => null);
       CartStore.clearCart();
     }
   },
+
+  /**
+   * Call this once at app startup (in _layout.tsx) to restore persisted session.
+   * Returns the restored user or null.
+   */
+  restoreSession: async (): Promise<SessionUser | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(SESSION_KEY);
+      if (raw) {
+        const user: SessionUser = JSON.parse(raw);
+        if (user && user.email) {
+          currentUser = user;
+          sessionListeners.forEach(listener => listener(currentUser));
+          // Load cart from Firestore for restored user
+          CartStore.loadFromFirestore();
+          return user;
+        }
+      }
+    } catch {
+      // Ignore parse errors — treat as unauthenticated
+    }
+    return null;
+  },
+
   subscribe: (listener: (user: SessionUser | null) => void) => {
     sessionListeners.add(listener);
     return () => {

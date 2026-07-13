@@ -111,9 +111,9 @@ export default function ItemDetailScreen() {
       return;
     }
 
-    // 401 Unauthorized check: session validation
+    // 401 Unauthorized check: verify user session exists
     const currentUser = SessionStore.getUser();
-    if (!currentUser || !currentUser.mobile) {
+    if (!currentUser || !currentUser.email) {
       setScreenState('401');
       return;
     }

@@ -7,6 +7,7 @@ export interface User {
   mobile?: string;
   password?: string;
   createdAt?: string;
+  role?: string;
 }
 
 export const AuthStore = {
@@ -21,6 +22,7 @@ export const AuthStore = {
         mobile: mobile || '',
         password,
         createdAt: new Date().toISOString(),
+        role: 'customer' // default role is customer
       });
       return true;
     } catch (error) {
@@ -38,7 +40,12 @@ export const AuthStore = {
       if (userSnap.exists()) {
         const userData = userSnap.data();
         if (userData.password === password) {
-          return { name: userData.fullName, email: userData.email, mobile: userData.mobile };
+          return {
+            name: userData.fullName,
+            email: userData.email,
+            mobile: userData.mobile,
+            role: userData.role || 'customer'
+          };
         }
       }
       return null;

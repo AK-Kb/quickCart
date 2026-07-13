@@ -96,6 +96,22 @@ export default function ProfileTab() {
               <Text style={{ color: '#4CAF50', fontSize: 13, fontWeight: '700' }}>Enabled</Text>
             </View>
 
+            {/* Manage Delivery Addresses */}
+            <Pressable
+              onPress={() => router.push('/addresses' as any)}
+              style={({ pressed }) => [
+                styles.settingRow,
+                { borderBottomColor: colors.border },
+                pressed && { opacity: 0.7 }
+              ]}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="location-outline" size={20} color={colors.text} style={{ marginRight: Spacing.sm }} />
+                <Text style={[styles.settingLabel, { color: colors.text }]}>Delivery Addresses</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            </Pressable>
+
             {/* Security */}
             <Pressable style={[styles.settingRow, { borderBottomColor: colors.border }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>

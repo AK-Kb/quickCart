@@ -1,9 +1,9 @@
 import { Stack, router, ErrorBoundaryProps, useSegments } from "expo-router";
-import { View, Text, StyleSheet, Pressable, useColorScheme, Platform } from "react-native";
+import { View, Text, StyleSheet, Pressable, useColorScheme, Platform, ActivityIndicator } from "react-native";
 import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, Spacing, BorderRadius } from "../constants/theme";
-import { useSessionState } from "../constants/cart";
+import { useSessionState, SessionStore } from "../constants/cart";
 
 // Root Layout Stack router
 export default function RootLayout() {
@@ -13,37 +13,71 @@ export default function RootLayout() {
 
   const segments = useSegments();
   const user = useSessionState();
-  const [isNavigationReady, setIsNavigationReady] = useState(false);
 
-  // Tiny delay to ensure navigation container mounts cleanly before redirect triggers
+  // Track whether the session has been restored from storage yet
+  // Until this is true, we don't navigate anywhere (prevents flicker/race)
+  const [sessionRestored, setSessionRestored] = useState(false);
+
+  // On mount: restore persisted session from AsyncStorage before any navigation
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsNavigationReady(true);
-    }, 100);
-    return () => clearTimeout(timer);
+    SessionStore.restoreSession().finally(() => {
+      setSessionRestored(true);
+    });
   }, []);
 
+    // Guard: redirect based on auth state only after session is confirmed
   useEffect(() => {
-    if (!isNavigationReady) return;
+    if (!sessionRestored) return;
 
-    // Check if the current route segment belongs to the authentication flow
     const routeSegments = segments as string[];
-    const inAuthGroup = 
-      routeSegments[0] === 'login' || 
-      routeSegments[0] === 'signup' || 
+
+    // Routes that don't require authentication
+    const inAuthGroup =
+      routeSegments[0] === 'login' ||
+      routeSegments[0] === 'signup' ||
       routeSegments[0] === 'forgot-password' ||
       routeSegments[0] === 'otp' ||
-      routeSegments.length === 0 || 
-      (routeSegments.length === 1 && routeSegments[0] === 'index');
+      routeSegments[0] === 'index' ||
+      routeSegments.length === 0;
+
+    // The splash/onboarding screen at root index is always accessible
+    const isRootIndex = routeSegments.length === 0 || routeSegments[0] === 'index';
+
+    // Check if accessing admin route
+    const inAdminGroup = routeSegments[0] === 'admin';
 
     if (!user && !inAuthGroup) {
-      // Unauthenticated user attempting to access protected screens - redirect to login
+      // Unauthenticated: protect all non-auth routes
+      console.log('[Auth] Unauthenticated access to protected route — redirecting to /login');
       router.replace('/login');
-    } else if (user && inAuthGroup) {
-      // Authenticated user attempting to access auth screens - redirect to tabs
+    } else if (user && inAuthGroup && !isRootIndex) {
+      // Authenticated user on a login/signup screen — send to correct dashboard
+      if (user.role === 'admin') {
+        console.log('[Auth] Authenticated admin on auth screen — redirecting to /admin');
+        router.replace('/admin' as any);
+      } else {
+        console.log('[Auth] Authenticated customer on auth screen — redirecting to /(tabs)');
+        router.replace('/(tabs)');
+      }
+    } else if (user && user.role !== 'admin' && inAdminGroup) {
+      // Customer trying to access admin screens — block and redirect
+      console.log('[Auth] Customer tried to access admin screens — redirecting to /(tabs)');
       router.replace('/(tabs)');
+    } else if (user && user.role === 'admin' && !inAdminGroup && !inAuthGroup) {
+      // Admin trying to access customer screens — block and redirect to admin panel
+      console.log('[Auth] Admin tried to access customer screens — redirecting to /admin');
+      router.replace('/admin' as any);
     }
-  }, [user, segments, isNavigationReady]);
+  }, [user, segments, sessionRestored]);
+
+  // Show a centered spinner while restoring session to prevent flash of login screen
+  if (!sessionRestored) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <Stack
@@ -60,9 +94,14 @@ export default function RootLayout() {
       <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
       <Stack.Screen name="otp" options={{ headerShown: false }} />
       <Stack.Screen name="permissions" options={{ headerShown: false }} />
+      <Stack.Screen name="admin" options={{ headerShown: false }} />
+
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="cart" options={{ headerShown: false, presentation: 'modal' }} />
       <Stack.Screen name="checkout" options={{ headerShown: false }} />
+      <Stack.Screen name="addresses" options={{ headerShown: false }} />
+      <Stack.Screen name="add-address" options={{ headerShown: false }} />
+      <Stack.Screen name="edit-address" options={{ headerShown: false }} />
       <Stack.Screen name="order-success" options={{ headerShown: false }} />
       <Stack.Screen name="item/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="error-test" options={{ headerShown: false }} />

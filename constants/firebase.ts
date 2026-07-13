@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 // Web App Firebase Configuration
 const firebaseConfig = {
@@ -17,6 +18,9 @@ const app = initializeApp(firebaseConfig);
 
 // Export Firestore Database reference
 export const db = getFirestore(app);
+
+// Export Firebase Auth instance
+export const auth = getAuth(app);
 
 // Seeding is handled externally via batch script to keep bundles lightweight
 export async function seedProductsIfEmpty(): Promise<void> {

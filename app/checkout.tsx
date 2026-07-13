@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,11 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, doc, setDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../constants/firebase';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { CartStore, useCartItems, SessionStore } from '../constants/cart';
+import { EmailService } from '../constants/emailService';
 
 const formatPrice = (price: number): string => {
   return '₹' + Intl.NumberFormat('en-IN').format(price);
@@ -33,7 +34,8 @@ export default function CheckoutScreen() {
   const colors = Colors[theme];
 
   // Retrieve current user and cart items
-  const currentUser = SessionStore.getUser() || { name: 'QuickCart Customer', email: 'customer@quickcart.com', mobile: '9876543210' };
+  const currentUserRaw = SessionStore.getUser();
+  const currentUser = currentUserRaw || { name: 'QuickCart Customer', email: 'customer@quickcart.com', mobile: '9876543210' };
   const cartItems = useCartItems();
   const discountPercent = CartStore.getDiscountPercent();
 
@@ -42,6 +44,39 @@ export default function CheckoutScreen() {
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const [deliveryOption, setDeliveryOption] = useState<DeliveryOption>('Standard');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('UPI');
+
+  const userEmail = currentUser.email;
+
+  // Load default address from Firestore if available
+  useEffect(() => {
+    const loadSavedAddress = async () => {
+      if (userEmail) {
+        try {
+          const q = query(
+            collection(db, 'addresses'),
+            where('userEmail', '==', userEmail.toLowerCase()),
+            where('isDefault', '==', true)
+          );
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            setAddress(snap.docs[0].data().addressText);
+          } else {
+            const qAny = query(
+              collection(db, 'addresses'),
+              where('userEmail', '==', userEmail.toLowerCase())
+            );
+            const snapAny = await getDocs(qAny);
+            if (!snapAny.empty) {
+              setAddress(snapAny.docs[0].data().addressText);
+            }
+          }
+        } catch (e) {
+          console.error('Error loading default address in checkout:', e);
+        }
+      }
+    };
+    loadSavedAddress();
+  }, [userEmail]);
 
   // Loading/submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -106,6 +141,9 @@ export default function CheckoutScreen() {
         updatedAt: new Date().toISOString()
       };
       await setDoc(trackingRef, trackingDoc);
+
+      // Send order confirmation email (fire-and-forget, non-blocking)
+      EmailService.sendOrderConfirmation(orderDoc).catch(() => null);
 
       router.replace({
         pathname: '/order-success' as any,
@@ -173,6 +211,11 @@ export default function CheckoutScreen() {
                 <Text style={[styles.recipientText, { color: colors.textMuted }]}>
                   Recipient: {currentUser.name} | +91 {currentUser.mobile}
                 </Text>
+                <Pressable onPress={() => router.push('/addresses' as any)} style={{ marginTop: Spacing.sm }}>
+                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' }}>
+                    Manage Saved Addresses
+                  </Text>
+                </Pressable>
               </View>
             </View>
           </View>

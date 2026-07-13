@@ -56,8 +56,12 @@ export default function Login() {
         SessionStore.setUser(user);
         // Load cart items from Firestore on successful login
         await CartStore.loadFromFirestore();
-        // Successful login - redirect to permissions request flow
-        router.replace('/permissions');
+        // Redirect based on user role
+        if (user.role === 'admin') {
+          router.replace('/admin' as any);
+        } else {
+          router.replace('/permissions');
+        }
       } else {
         setErrorMsg('Invalid email or password. If you are new, please Sign Up first.');
       }

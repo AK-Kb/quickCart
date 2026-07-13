@@ -21,6 +21,7 @@ import { db } from '../constants/firebase';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { AuthStore } from '../constants/auth';
 import { SessionStore } from '../constants/cart';
+import { EmailService } from '../constants/emailService';
 
 export default function OtpVerification() {
   const router = useRouter();
@@ -89,6 +90,8 @@ export default function OtpVerification() {
           if (registerSuccess) {
             // Set session
             SessionStore.setUser({ name, email, mobile });
+            // Send welcome email (fire-and-forget, non-blocking)
+            EmailService.sendWelcome(email, name).catch(() => null);
             // Redirect directly to Dashboard
             router.replace('/(tabs)');
           } else {

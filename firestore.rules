@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (getUserData().role == 'admin' || 
+         request.auth.token.email.endsWith('@quickcart.com'));
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && (request.auth.uid == userId || request.auth.token.email == userId);
+    }
+
+    // Users Collection rules
+    match /users/{email} {
+      allow read: if isAuthenticated();
+      allow write: if true; // Signup is public, but updates can be restricted
+      allow delete: if isAdmin();
+    }
+
+    // Products Collection rules
+    match /products/{productId} {
+      allow read: if true; // Public catalog viewing
+      allow write: if isAdmin(); // Admin-only CRUD operations
+    }
+
+    // Categories Collection rules
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin(); // Admin-only CRUD
+    }
+
+    // Cities / Service Areas Collection rules
+    match /cities/{cityId} {
+      allow read: if true;
+      allow write: if isAdmin(); // Admin-only CRUD
+    }
+
+    // Orders Collection rules
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (resource == null || resource.data.userEmail == request.auth.token.email || isAdmin());
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // Tracking Collection rules
+    match /tracking/{orderId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAuthenticated();
+    }
+
+    // Carts Collection rules
+    match /carts/{email} {
+      allow read, write: if isAuthenticated() && (request.auth.token.email == email || isAdmin());
+    }
+
+    // OTP verification Collection rules
+    match /otps/{email} {
+      allow read, write: if true;
+    }
+  }
+}

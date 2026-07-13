@@ -15,8 +15,11 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { db } from '../constants/firebase';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { AuthStore } from '../constants/auth';
+import { EmailService } from '../constants/emailService';
 
 export default function ForgotPassword() {
   const router = useRouter();
@@ -24,11 +27,13 @@ export default function ForgotPassword() {
   const theme = systemScheme === 'dark' ? 'dark' : 'light';
   const colors = Colors[theme];
 
-  // Form Fields
-  const [mobile, setMobile] = useState('');
+  // Form Fields — Step 1: email; Step 2: OTP + new password
+  const [step, setStep] = useState<'email' | 'otp'>('email');
+  const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   // Password Visibility States
   const [showPassword, setShowPassword] = useState(false);
@@ -38,56 +43,82 @@ export default function ForgotPassword() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // Step 1: Send OTP to email
+  const handleSendOTP = async () => {
+    setErrorMsg('');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email.trim() || !emailRegex.test(email.trim())) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+    setIsSending(true);
+    try {
+      const exists = await AuthStore.userExists(email.trim().toLowerCase());
+      if (!exists) {
+        setErrorMsg('This email address is not registered with quickCart.');
+        setIsSending(false);
+        return;
+      }
+      // Fetch user name
+      const userSnap = await getDoc(doc(db, 'users', email.trim().toLowerCase()));
+      const userName = userSnap.exists() ? (userSnap.data().fullName || 'Customer') : 'Customer';
+
+      // Generate OTP and store in Firestore
+      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      await setDoc(doc(db, 'otps', `reset_${email.trim().toLowerCase()}`), {
+        code: newOtp,
+        expiresAt: expiry.toISOString(),
+        used: false,
+        email: email.trim().toLowerCase(),
+      });
+
+      // Send email with OTP
+      await EmailService.sendForgotPassword(email.trim().toLowerCase(), userName, newOtp);
+      setStep('otp');
+      setSuccessMsg(`A 6-digit reset code has been sent to ${email.trim()}.`);
+    } catch {
+      setErrorMsg('An error occurred. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Step 2: Verify OTP and reset password
   const handleResetPassword = async () => {
     setErrorMsg('');
     setSuccessMsg('');
 
-    // Validations
-    if (!mobile.trim() || !otp.trim() || !newPassword.trim() || !confirmPassword.trim()) {
+    if (!otp.trim() || !newPassword.trim() || !confirmPassword.trim()) {
       setErrorMsg('All fields are required.');
       return;
     }
 
-    if (mobile.trim().length !== 10 || isNaN(Number(mobile))) {
-      setErrorMsg('Please enter a valid 10-digit mobile number.');
-      return;
-    }
-
+    // Verify OTP against Firestore
     try {
-      const exists = await AuthStore.userExists(mobile.trim());
-      if (!exists) {
-        setErrorMsg('This mobile number is not registered.');
-        return;
-      }
+      const otpRef = doc(db, 'otps', `reset_${email.trim().toLowerCase()}`);
+      const otpSnap = await getDoc(otpRef);
+      if (!otpSnap.exists()) { setErrorMsg('No reset code found. Please request again.'); return; }
+      const otpData = otpSnap.data();
+      if (otpData.used) { setErrorMsg('This code has already been used.'); return; }
+      if (new Date() > new Date(otpData.expiresAt)) { setErrorMsg('This code has expired. Please request a new one.'); return; }
+      if (otpData.code !== otp.trim()) { setErrorMsg('Invalid code. Please check and try again.'); return; }
     } catch {
-      setErrorMsg('An error occurred. Please try again.');
+      setErrorMsg('Verification failed. Please try again.');
       return;
     }
 
-    if (otp.trim() !== '123456') {
-      setErrorMsg('Invalid OTP. Please enter the default OTP: 123456');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setErrorMsg('Password must be at least 6 characters long.');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setErrorMsg('Passwords do not match.');
-      return;
-    }
+    if (newPassword.length < 6) { setErrorMsg('Password must be at least 6 characters long.'); return; }
+    if (newPassword !== confirmPassword) { setErrorMsg('Passwords do not match.'); return; }
 
     // Attempt Reset
     try {
-      const resetSuccess = await AuthStore.resetPassword(mobile.trim(), newPassword);
-      
+      const resetSuccess = await AuthStore.resetPassword(email.trim().toLowerCase(), newPassword);
+      // Mark OTP as used
+      await setDoc(doc(db, 'otps', `reset_${email.trim().toLowerCase()}`), { used: true }, { merge: true });
       if (resetSuccess) {
         setSuccessMsg('Password changed successfully! Redirecting to login...');
-        setTimeout(() => {
-          router.replace('/login');
-        }, 2000);
+        setTimeout(() => { router.replace('/login'); }, 2000);
       } else {
         setErrorMsg('Password reset failed. Please try again.');
       }
@@ -117,13 +148,17 @@ export default function ForgotPassword() {
               quick<Text style={{ color: colors.secondary }}>Cart</Text>
             </Text>
             <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-              Reset your password using the default OTP code.
+              {step === 'email'
+                ? 'Enter your registered email to receive a reset code.'
+                : 'Enter the 6-digit code sent to your email.'}
             </Text>
           </View>
 
           {/* Reset Card */}
           <View style={[styles.formCard, { backgroundColor: colors.card, borderColor: colors.border, ...Shadows.light }]}>
-            <Text style={[styles.formHeader, { color: colors.text }]}>Reset Password</Text>
+            <Text style={[styles.formHeader, { color: colors.text }]}>
+              {step === 'email' ? 'Forgot Password' : 'Reset Password'}
+            </Text>
 
             {errorMsg ? (
               <View style={[styles.errorContainer, { backgroundColor: colors.error + '15', borderColor: colors.error }]}>
@@ -137,106 +172,121 @@ export default function ForgotPassword() {
               </View>
             ) : null}
 
-            {/* Mobile Input */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Mobile Number</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Ionicons name="call-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="Registered 10-digit number"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="phone-pad"
-                  autoComplete="tel"
-                  value={mobile}
-                  onChangeText={setMobile}
-                />
-              </View>
-            </View>
+            {step === 'email' ? (
+              <>
+                {/* Email Input */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Registered Email</Text>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Ionicons name="mail-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { color: colors.text }]}
+                      placeholder="Enter your email address"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={email}
+                      onChangeText={setEmail}
+                    />
+                  </View>
+                </View>
 
-            {/* OTP Input */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>OTP Code</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Ionicons name="keypad-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="Enter default OTP (123456)"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  value={otp}
-                  onChangeText={setOtp}
-                />
-              </View>
-            </View>
-
-            {/* New Password Input */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>New Password</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="Minimum 6 characters"
-                  placeholderTextColor={colors.textMuted}
-                  secureTextEntry={!showPassword}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                />
+                {/* Send OTP Button */}
                 <Pressable
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.eyeBtn}
+                  onPress={handleSendOTP}
+                  disabled={isSending}
+                  style={({ pressed }) => [
+                    styles.submitBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: pressed || isSending ? 0.8 : 1,
+                      marginTop: Spacing.md,
+                    },
+                  ]}
                 >
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={colors.textMuted}
-                  />
+                  <Text style={styles.submitBtnText}>
+                    {isSending ? 'Sending Code...' : 'Send Reset Code'}
+                  </Text>
                 </Pressable>
-              </View>
-            </View>
+              </>
+            ) : (
+              <>
+                {/* OTP Input */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Reset Code (OTP)</Text>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Ionicons name="keypad-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { color: colors.text }]}
+                      placeholder="Enter 6-digit code"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="number-pad"
+                      maxLength={6}
+                      value={otp}
+                      onChangeText={setOtp}
+                    />
+                  </View>
+                </View>
 
-            {/* Confirm Password Input */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Confirm New Password</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="Re-enter new password"
-                  placeholderTextColor={colors.textMuted}
-                  secureTextEntry={!showConfirmPassword}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                />
+                {/* New Password Input */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>New Password</Text>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { color: colors.text }]}
+                      placeholder="Minimum 6 characters"
+                      placeholderTextColor={colors.textMuted}
+                      secureTextEntry={!showPassword}
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                    />
+                    <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
+                      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Confirm Password Input */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Confirm New Password</Text>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { color: colors.text }]}
+                      placeholder="Re-enter new password"
+                      placeholderTextColor={colors.textMuted}
+                      secureTextEntry={!showConfirmPassword}
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                    />
+                    <Pressable onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeBtn}>
+                      <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Submit Button */}
                 <Pressable
-                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                  style={styles.eyeBtn}
+                  onPress={handleResetPassword}
+                  style={({ pressed }) => [
+                    styles.submitBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: pressed ? 0.9 : 1,
+                      marginTop: Spacing.md,
+                    },
+                  ]}
                 >
-                  <Ionicons
-                    name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={colors.textMuted}
-                  />
+                  <Text style={styles.submitBtnText}>Reset Password</Text>
                 </Pressable>
-              </View>
-            </View>
 
-            {/* Submit Button */}
-            <Pressable
-              onPress={handleResetPassword}
-              style={({ pressed }) => [
-                styles.submitBtn,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: pressed ? 0.9 : 1,
-                  marginTop: Spacing.md,
-                },
-              ]}
-            >
-              <Text style={styles.submitBtnText}>Reset Password</Text>
-            </Pressable>
+                {/* Back to email step */}
+                <Pressable onPress={() => { setStep('email'); setErrorMsg(''); setSuccessMsg(''); }} style={{ alignItems: 'center', marginTop: Spacing.md }}>
+                  <Text style={[styles.inputLabel, { color: colors.primary }]}>← Change email</Text>
+                </Pressable>
+              </>
+            )}
           </View>
 
           {/* Login Option */}
@@ -254,6 +304,7 @@ export default function ForgotPassword() {
     </SafeAreaView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {
